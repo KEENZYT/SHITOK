@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e13">
+<title>ЩИТОК — симулятор монтажа электрощита</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">⚡</div>
+      <div class="brand-text">
+        <h1>ЩИТОК</h1>
+        <p>монтаж · ремонт · проверка</p>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><span>Время</span><b id="statTime">00:00</b></div>
+      <div class="stat"><span>Счёт</span><b id="statScore">0</b></div>
+      <div class="stat"><span>Аккуратность</span><b id="statNeat">100%</b></div>
+      <div class="stat"><span>Ошибки</span><b id="statMistakes">0</b></div>
+    </div>
+
+    <div class="top-actions">
+      <button id="btnSound" class="icon-btn" title="Звук" aria-label="Звук">🔊</button>
+      <button id="btnLevels" class="btn ghost" title="К уровням">☰ Уровни</button>
+      <button id="btnRestart" class="btn ghost" title="Начать уровень заново">↻</button>
+    </div>
+  </header>
+
+  <main class="main">
+    <aside class="sidebar">
+      <div class="side-head">
+        <h2 id="sideTitle">Задание</h2>
+        <span id="taskProgress" class="badge">0 / 10</span>
+      </div>
+      <div id="modeHelp" class="mode-help" hidden><b>Найдите обрыв</b><span>1. Прозвоните указанные провода мультиметром.</span><span>2. Выберите «Снять провод» и нажмите на отмеченный обрыв.</span><span>3. Соедините те же клеммы новым проводом, отрежьте, зачистите, затяните и проверьте ещё раз.</span></div>
+      <div id="starGoals" class="star-goals"></div>
+      <ol id="taskList" class="task-list"></ol>
+      <div class="side-note">
+        <b>Как играть</b>
+        <p>Перетащите детали из лотка на рейку. Соедините клеммы, отрежьте провод кусачками, зачистите стриппером и затяните отвёрткой. Для прозвонки выберите мультиметр и нажмите обе клеммы готового провода. Потяните провод за середину, чтобы изменить маршрут.</p>
+      </div>
+    </aside>
+
+    <section class="stage" id="stage">
+      <canvas id="game" width="1160" height="700" aria-label="Электрощит"></canvas>
+      <div id="neatDetail" class="neat-detail" aria-live="polite">Нет наложений и проходов по приборам</div>
+      <div id="toast" class="toast" role="status"></div>
+      <div id="overlay" class="overlay show">
+        <div class="card">
+          <div class="card-badge">загрузка</div>
+          <h2>ЩИТОК</h2>
+          <p class="lead">Готовим уровни…</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="toolbar">
+    <div class="tool-group">
+      <span class="tool-label">Инструменты</span>
+      <div class="tool-belt" id="toolBelt"></div>
+    </div>
+    <div class="tool-group">
+      <span class="tool-label">Цвет провода</span>
+      <div class="chips" id="colorChips">
+        <button class="chip active" data-color="auto">Авто</button>
+        <button class="chip" data-color="L"><i style="background:#b25f28"></i>Фаза</button>
+        <button class="chip" data-color="N"><i style="background:#2f6fb0"></i>Ноль</button>
+        <button class="chip" data-color="PE"><i style="background:#6fa832"></i>Земля</button>
+      </div>
+    </div>
+    <div class="tool-group">
+      <button id="btnHint" class="btn">💡 Подсказка</button>
+      <button id="btnUndo" class="btn">↶ Отменить</button>
+      <button id="btnClear" class="btn danger">Сбросить провода</button>
+    </div>
+  </footer>
+
+</div>
+<script src="levels.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
