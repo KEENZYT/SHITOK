@@ -26,6 +26,8 @@ final class GameViewController: UIViewController, WKNavigationDelegate {
         view.scrollView.backgroundColor = view.backgroundColor
         view.scrollView.contentInsetAdjustmentBehavior = .never
         view.scrollView.bounces = false
+        // The board handles its own two-finger gestures; do not zoom the whole page.
+        view.scrollView.pinchGestureRecognizer?.isEnabled = false
         return view
     }()
 
