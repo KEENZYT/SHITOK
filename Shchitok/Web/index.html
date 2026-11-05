@@ -29,6 +29,7 @@
     <button id="mobileMenuButton" class="mobile-menu-button" aria-label="Меню игры" aria-expanded="false">Ⅱ</button>
     <div class="top-actions">
       <button id="btnSound" class="icon-btn" title="Звук" aria-label="Звук">🔊</button>
+      <button id="btnShop" class="btn ghost" title="Магазин">◇ Магазин</button>
       <button id="btnLevels" class="btn ghost" title="К уровням">☰ Уровни</button>
       <button id="btnRestart" class="btn ghost" title="Начать уровень заново">↻</button>
     </div>
@@ -59,6 +60,7 @@
       <canvas id="game" width="1160" height="700" aria-label="Электрощит"></canvas>
       <div id="neatDetail" class="neat-detail" aria-live="polite">Нет наложений и проходов по приборам</div>
       <div id="toast" class="toast" role="status"></div>
+      <button id="launchButton" class="launch-button" hidden>⚡ Запустить объект <span>Все задания выполнены</span></button>
       <div id="overlay" class="overlay show">
         <div class="card">
           <div class="card-badge">загрузка</div>
@@ -74,7 +76,7 @@
     <div class="mobile-menu-card">
       <div class="mobile-menu-head"><strong>Меню</strong><button id="closeMobileMenu" aria-label="Закрыть меню">✕</button></div>
       <div class="mobile-menu-grid">
-        <button data-action="btnLevels">☰ Уровни</button><button data-action="btnRestart">↻ Заново</button>
+        <button data-action="btnLevels">☰ Уровни</button><button data-action="btnShop">◇ Магазин</button><button data-action="btnRestart">↻ Заново</button>
         <button data-action="btnHint">✦ Подсказка</button><button data-action="btnUndo">↶ Отменить</button>
         <button data-action="btnSound">♪ Звук</button><button data-action="btnClear">✕ Сброс проводов</button>
       </div>

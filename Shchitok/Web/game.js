@@ -93,6 +93,7 @@ function defaultProgress() {
     levels: {},
     unlockedTools: ['hand', 'cutters', 'stripper', 'screwdriver', 'multimeter', 'remove'],
     settings: { sound: true },
+    wallet: 0, owned: ['panel-standard', 'light-none'], equipped: {panel:'panel-standard', light:'light-none'}, challenge: 'standard', records: {wins:0, master:0, expert:0},
   };
 }
 
@@ -105,6 +106,14 @@ function loadProgress() {
         p.levels = p.levels || {};
         p.unlockedTools = Array.from(new Set(['hand', 'cutters', 'stripper', 'screwdriver', 'multimeter', 'remove'].concat(Array.isArray(p.unlockedTools) ? p.unlockedTools : [])));
         p.settings = Object.assign({ sound: true }, p.settings || {});
+        // Раньше очки были рекордами, а не балансом: один раз зачисляем лучшие результаты.
+        if (!Number.isFinite(p.wallet)) p.wallet = Object.values(p.levels).reduce((sum, l) => sum + (Number.isFinite(l.bestScore) ? Math.max(0, l.bestScore) : 0), 0);
+        p.wallet = Math.max(0, Math.floor(p.wallet));
+        p.owned = Array.isArray(p.owned) ? Array.from(new Set(['panel-standard','light-none',...p.owned])) : ['panel-standard','light-none'];
+        p.equipped = Object.assign({panel:'panel-standard',light:'light-none'}, p.equipped || {});
+        for (const slot of ['panel','light']) if (!p.owned.includes(p.equipped[slot])) p.equipped[slot] = slot === 'panel' ? 'panel-standard' : 'light-none';
+        p.challenge = ['standard','master','expert'].includes(p.challenge) ? p.challenge : 'standard';
+        p.records = Object.assign({wins:0,master:0,expert:0}, p.records || {});
         return p;
       }
     }
@@ -178,7 +187,7 @@ function addDeviceNodes(d) {
     const offs = compactWorld ? [0.125,0.375,0.625,0.875].map(v=>v*devW(d)) : [16, 52, 88, 124];
     const types = d.kind === 'meter3' ? ['L', 'L', 'L', 'N'] : ['L', 'L', 'N', 'N'];
     offs.forEach((o, i) => {
-      addNode('m' + (i + 1), d.x + o, TERM_BOT, { x: 0, y: 1 }, types[i], String(i + 1), d.id, false);
+      addNode('m' + (i + 1), d.x + o, TERM_BOT, { x: 0, y: 1 }, types[i], String(i + 1), d.id, true);
     });
     return;
   }
@@ -852,6 +861,9 @@ const state = {
   lastUnlockedTool: null,
   assembly: null,
   toastTimer: 0,
+  readyForLaunch: false,
+  challenge: 'standard',
+  verifiedWireIds: [],
 };
 
 const neatCache = { value: 100, dirty: true };
@@ -1180,7 +1192,7 @@ function mobileScrew(x,y,r=10) {
 function drawMobilePanel() {
   const {x,y,w,h}=PANEL;
   ctx.save();ctx.shadowColor='rgba(0,8,17,.45)';ctx.shadowBlur=24;ctx.shadowOffsetY=9;
-  rr(ctx,x,y,w,h,22);let g=ctx.createLinearGradient(x,y,x+w,y+h);g.addColorStop(0,'#f7faff');g.addColorStop(.5,'#e5ebf2');g.addColorStop(1,'#becbd9');ctx.fillStyle=g;ctx.fill();ctx.restore();
+  rr(ctx,x,y,w,h,22);let g=ctx.createLinearGradient(x,y,x+w,y+h);const palette=panelPalette();g.addColorStop(0,palette[0]);g.addColorStop(.5,palette[1]);g.addColorStop(1,palette[2]);ctx.fillStyle=g;ctx.fill();ctx.restore();
   rr(ctx,x+2,y+2,w-4,h-4,20);ctx.strokeStyle='#95a7ba';ctx.lineWidth=3;ctx.stroke();
   rr(ctx,x+7,y+7,w-14,h-14,17);ctx.strokeStyle='rgba(255,255,255,.85)';ctx.lineWidth=2;ctx.stroke();
   ctx.save();rr(ctx,x+8,y+8,w-16,h-16,16);ctx.clip();
@@ -1252,7 +1264,7 @@ function drawMobileNodes(){
     const loose=state.wires.some(w=>(w.a===id||w.b===id)&&(!w.cut||!w.stripped||!w.tightened));
     mobileScrew(n.x,n.y,n.devId==='nbus'||n.devId==='pebus'?8:10);
     if(pending||hinted||flashing||loose){ctx.beginPath();ctx.arc(n.x,n.y,15,0,TAU);ctx.strokeStyle=flashing?state.flash.color:hinted?'#55a8f5':'#eba83c';ctx.lineWidth=3;ctx.stroke();}
-    if(n.showLabel){ctx.textAlign='center';ctx.fillStyle='#7d90a2';ctx.font='bold 9px system-ui';ctx.fillText(n.label,n.x,n.dir.y<0?n.y-14:n.y+20);}
+    if(n.showLabel){ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='bold 14px system-ui,sans-serif';const ly=n.dir.y<0?n.y-17:n.y+18;ctx.lineJoin='round';ctx.strokeStyle='#eff5fa';ctx.lineWidth=4;ctx.strokeText(n.label,n.x,ly);ctx.fillStyle='#354c60';ctx.fillText(n.label,n.x,ly);ctx.restore();}
   }
 }
 
@@ -1264,9 +1276,10 @@ function drawPanel() {
   ctx.shadowOffsetY = 18;
   rr(ctx, PANEL.x, PANEL.y, PANEL.w, PANEL.h, PANEL.r);
   const g = ctx.createLinearGradient(PANEL.x, PANEL.y, PANEL.x + PANEL.w, PANEL.y + PANEL.h);
-  g.addColorStop(0, '#e6ebf1');
-  g.addColorStop(0.45, '#cfd6de');
-  g.addColorStop(1, '#aeb8c2');
+  const palette = panelPalette();
+  g.addColorStop(0, palette[0]);
+  g.addColorStop(0.45, palette[1]);
+  g.addColorStop(1, palette[2]);
   ctx.fillStyle = g;
   ctx.fill();
   ctx.restore();
@@ -1757,8 +1770,8 @@ function drawNodes() {
     }
 
     if (n.showLabel) {
-      ctx.fillStyle = '#6d7885';
-      ctx.font = '8px Inter, system-ui, sans-serif';
+      ctx.fillStyle = '#34495d';
+      ctx.font = 'bold 11px Inter, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(n.label, n.x, n.dir.y < 0 ? n.y - 10 : n.y + 14);
     }
@@ -1909,6 +1922,7 @@ function drawParticles() {
 function drawScene() {
   if (state.assembly) { drawAssembly(); return; }
   drawPanel();
+  drawPanelLighting();
   drawRail(RAIL_TOP);
   for (const d of activeDevices) drawDevice(d);
   drawRail(RAIL_BOT);
@@ -2097,7 +2111,7 @@ function completeTask(task) {
   toast('✓ ' + task.def.text, 'ok');
   renderTasks();
   updateHUD();
-  if (state.tasks.every((t) => t.done)) finishGame();
+  if (state.tasks.every((t) => t.done)) { state.readyForLaunch = true; document.getElementById('launchButton').hidden = false; toast('Монтаж готов! Запустите объект ⚡', 'ok'); }
 }
 
 function installDevice(deviceId) {
@@ -2264,6 +2278,8 @@ function probeAt(id) {
     toast('ОБРЫВ! Выберите «Снять провод», затем замените его.', 'err');
     return;
   }
+  if (!state.verifiedWireIds.includes(wire.id)) state.verifiedWireIds.push(wire.id);
+  updateHUD();
   flashNodes(first, id, '#4ade80');
   if (diagnostic) {
     diagnostic.result = 'Контакт есть';
@@ -2290,10 +2306,12 @@ function removeWire(wire, silent) {
     }
   }
   state.wires.splice(idx, 1);
+  state.verifiedWireIds = state.verifiedWireIds.filter(id => id !== wire.id);
   state.probeNode = null;
   state.history = state.history.filter((id) => id !== wire.id);
   const task = findWireTask(wire.a, wire.b);
   if (task && task.done) task.done = false;
+  if (state.readyForLaunch) { state.readyForLaunch = false; document.getElementById('launchButton').hidden = true; }
   for (const t of state.tasks) if ((t.def.type === 'test' || t.def.type === 'replace') && pairMatch(t.def, wire.a, wire.b)) t.done = false;
   neatCache.dirty = true;
   if (!silent) { Sound.click(); toast('Провод удалён', 'info'); }
@@ -2318,6 +2336,9 @@ function clearWires() {
   if (state.level.mode === 'fault' && state.tasks.some(t => t.def.type === 'diagnose' && !t.done)) { toast('Сначала прозвоните все линии', 'info'); return; }
   state.wires = [];
   state.history = [];
+  state.verifiedWireIds = [];
+  state.readyForLaunch = false;
+  document.getElementById('launchButton').hidden = true;
   state.probeNode = null;
   state.pendingNode = null;
   for (const t of state.tasks) if (t.def.type === 'wire' || t.def.type === 'test' || t.def.type === 'replace') t.done = false;
@@ -2361,6 +2382,10 @@ function resetGame() {
   state.wires = [];
   state.history = [];
   state.wireSeq = 0;
+  state.readyForLaunch = false;
+  state.verifiedWireIds = [];
+  state.challenge = progress.challenge;
+  document.getElementById('launchButton').hidden = true;
   state.tasks = (state.level.tasks || []).map((def) => ({ def: {...def}, done: false }));
   state.pendingNode = null;
   state.hoverNode = null;
@@ -2426,15 +2451,91 @@ function restartGame() {
   toast('Новый монтаж — поехали!', 'info');
 }
 
+// Контракты не блокируют заказы: это добровольная дополнительная цель.
+const CHALLENGES = {
+  standard:{name:'Обычный', description:'Без дополнительных условий', bonus:0},
+  master:{name:'Мастер', description:'Без ошибок и подсказок, проверить 2 разных провода мультиметром', checks:2, bonus:.30},
+  expert:{name:'Эталон', description:'Без ошибок и подсказок, 100% аккуратность, проверить 3 разных провода', checks:3, bonus:.60},
+};
+const SHOP_ITEMS = [
+  {id:'panel-standard',slot:'panel',name:'Светлый металл',desc:'Классическая панель',price:0,swatch:'#d9e2eb'},
+  {id:'panel-cream',slot:'panel',name:'Тёплый фарфор',desc:'Панель с тёплым оттенком',price:1800,swatch:'#e8d8bc'},
+  {id:'panel-blue',slot:'panel',name:'Северная сталь',desc:'Холодная голубая панель',price:2700,swatch:'#b7d2e2'},
+  {id:'panel-graphite',slot:'panel',name:'Титановый серый',desc:'Более глубокий оттенок панели',price:3900,swatch:'#9daab7'},
+  {id:'light-none',slot:'light',name:'Без подсветки',desc:'Стандартный вид щита',price:0,swatch:'#70818f'},
+  {id:'light-warm',slot:'light',name:'Янтарная подсветка',desc:'Тёплый свет по краям щита',price:2200,swatch:'#ffba55'},
+  {id:'light-blue',slot:'light',name:'Лазурная подсветка',desc:'Холодный свет по краям щита',price:3000,swatch:'#65d5ff'},
+];
+function challengePass(id, neat) {
+  if (id === 'standard') return true;
+  return state.mistakes === 0 && state.hintsUsed === 0 && (id !== 'expert' || neat === 100) && state.verifiedWireIds.length >= (CHALLENGES[id].checks || 0);
+}
+function panelPalette() {
+  return ({'panel-cream':['#fff9ed','#eee2cf','#c9b9a2'], 'panel-blue':['#f1fbff','#d5e9f3','#a9c4d6'], 'panel-graphite':['#edf2f5','#c8d3db','#90a1ae']})[progress.equipped.panel] || ['#f7faff','#e5ebf2','#becbd9'];
+}
+function drawPanelLighting() {
+  if (progress.equipped.light === 'light-none') return;
+  const color = progress.equipped.light === 'light-warm' ? '#ffb44f' : '#4cc8ff';
+  ctx.save();ctx.shadowColor=color;ctx.shadowBlur=10;ctx.strokeStyle=color;ctx.globalAlpha=.72;ctx.lineWidth=3;
+  rr(ctx,PANEL.x+12,PANEL.y+12,PANEL.w-24,PANEL.h-24,14);ctx.stroke();ctx.restore();
+}
+function challengeSelector() {
+  return '<div class="contract-picker"><div class="section-eyebrow">ДОПОЛНИТЕЛЬНЫЙ КОНТРАКТ · НА СЛЕДУЮЩИЙ ЗАКАЗ</div><div class="contract-options">' + Object.entries(CHALLENGES).map(([id,c])=>'<button class="contract-choice '+(progress.challenge===id?'chosen':'')+'" data-challenge="'+id+'" aria-pressed="'+(progress.challenge===id)+'"><b>'+c.name+(c.bonus?' · +'+Math.round(c.bonus*100)+'%':'')+'</b><span>'+c.description+'</span></button>').join('') + '</div><small>Бонус за условия контракта. Если не получилось — обычная награда сохраняется.</small></div>';
+}
+function careerBadges() {
+  const completed=Object.values(progress.levels).filter(l=>l.completed).length;
+  const stars=LEVELS.reduce((s,_,i)=>s+levelStars(i),0);
+  const badges=[['Первый объект',completed>=1],['5 объектов',completed>=5],['30 звёзд',stars>=30],['Контракт мастера',progress.records.master>0],['Эталон',progress.records.expert>0]];
+  return '<div class="career-badges"><div class="section-eyebrow">ДОСТИЖЕНИЯ</div><div class="badge-list">'+badges.map(([name,ok])=>'<span class="career-badge '+(ok?'earned':'')+'">'+(ok?'◆':'◇')+' '+name+'</span>').join('')+'</div></div>';
+}
+function launchScene() {
+  const title = state.level.name;
+  const home = /дом|дача|коттедж/i.test(title) || state.level.chapter === 'Частный дом';
+  const industrial = /котельн|серверн|мастерск|пекарн|насосн/i.test(title) || state.level.chapter === 'Инфраструктура';
+  if (home || industrial) {
+    const drawing = home ?
+      '<path d="M0 101Q55 76 112 100T220 96T360 96V130H0Z" fill="#34545c"/><path d="M50 108V64l49-33 49 33v44" fill="#5f7c86" stroke="#a7c6c9" stroke-width="2"/><path d="m40 67 59-40 59 40" fill="none" stroke="#d0c5ac" stroke-width="5"/><path d="M120 45V26h12v27" fill="#7897a2"/><path d="M90 108V78h20v30" fill="#2b4556"/><g class="scene-windows" fill="#ffda7a"><rect x="63" y="73" width="17" height="16" rx="2"/><rect x="119" y="73" width="17" height="16" rx="2"/></g><path d="M226 104V73m-18 3 18-33 18 33zM275 106V81m-17 2 17-32 17 32z" fill="#315b57" stroke="#779d86" stroke-width="3"/><circle cx="199" cy="80" r="5" fill="#ffe39b"/><path d="M199 85v22" stroke="#d3c39c" stroke-width="3"/>' :
+      '<path d="M0 106h360v24H0z" fill="#294a52"/><path d="M39 109V63l31-16v16l30-16v62M101 109V45h93v64M213 109V66h105v43" fill="#526e7a" stroke="#9ab6bd" stroke-width="2"/><path d="M118 45V24h12v21m35 0V15h15v30" stroke="#b1c4c5" stroke-width="5"/><path d="M237 64V46h54v18" stroke="#93b5c1" stroke-width="4" fill="none"/><g class="scene-windows" fill="#ffda7a"><path d="M111 59h15v13h-15zm24 0h15v13h-15zm24 0h15v13h-15zm-48 21h15v13h-15zm24 0h15v13h-15zm24 0h15v13h-15zM226 78h14v13h-14zm23 0h14v13h-14zm23 0h14v13h-14zm23 0h14v13h-14z"/></g>';
+    return '<div class="launch-scene" aria-label="Художественная анимация запущенного объекта"><div class="launch-caption"><span>ОБЪЕКТ ЗАПУЩЕН</span><b>'+title+'</b></div><svg viewBox="0 0 360 130" aria-hidden="true"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#152b48"/><stop offset="1" stop-color="#395f6b"/></linearGradient></defs><rect width="360" height="130" rx="14" fill="url(#sky)"/><circle cx="309" cy="24" r="11" fill="#f6ddb1" opacity=".8"/>'+drawing+'<path d="M0 110h360" stroke="#efbd70" stroke-width="2"/><path class="energy-dash" d="M0 115h360" stroke="#a6fff1" stroke-width="2" stroke-dasharray="6 16"/></svg><small>Художественная визуализация, не проверка реальной цепи</small></div>';
+  }
+  return '<div class="launch-scene" aria-label="Художественная анимация запущенного объекта"><div class="launch-caption"><span>ОБЪЕКТ ЗАПУЩЕН</span><b>' + state.level.name + '</b></div><svg viewBox="0 0 360 130" aria-hidden="true"><defs><linearGradient id="sky" x2="0" y2="1"><stop stop-color="#172c49"/><stop offset="1" stop-color="#27495e"/></linearGradient><linearGradient id="ground" x2="1" y2="0"><stop stop-color="#f4a83b"/><stop offset="1" stop-color="#83e5d5"/></linearGradient></defs><rect width="360" height="130" rx="14" fill="url(#sky)"/><circle cx="305" cy="28" r="12" fill="#e6d6aa" opacity=".8"/><path d="M0 99 42 74 71 87 105 64 136 89 183 71 232 94 281 70 360 92V130H0Z" fill="#263f50"/><path d="M32 110V61l28-17 28 17v49M43 110V78h13v32M68 78h10v11H68z" fill="#668291" stroke="#a9c5ca" stroke-width="2"/><path d="M112 110V39h48v71M171 110V54h43v56M223 110V30h53v80" fill="#405e70" stroke="#9ab6c1" stroke-width="2"/><g class="scene-windows" fill="#ffd46b"><path d="M120 50h10v10h-10zm17 0h10v10h-10zm-17 18h10v10h-10zm17 0h10v10h-10zm-17 18h10v10h-10zm17 0h10v10h-10zM179 64h10v10h-10zm16 0h10v10h-10zm-16 18h10v10h-10zm16 0h10v10h-10zM231 42h10v10h-10zm18 0h10v10h-10zm-18 18h10v10h-10zm18 0h10v10h-10zm-18 18h10v10h-10zm18 0h10v10h-10zM68 78h10v11H68z"/></g><path d="M0 111h360" stroke="url(#ground)" stroke-width="3"/><path class="energy-dash" d="M5 115h350" stroke="#a6fff1" stroke-width="2" stroke-dasharray="6 16"/></svg><small>Художественная визуализация, не проверка реальной цепи</small></div>';
+}
+function showShop(message = '') {
+  if (state.running && !state.finished && !state.paused) state.paused = true;
+  state.pendingNode=null;state.probeNode=null;state.dragPart=null;state.dragWire=null;
+  const overlay=document.getElementById('overlay');
+  const sections=[['panel','Панели'],['light','Подсветка']].map(([slot,title])=>'<h3 class="shop-heading">'+title+'</h3><div class="shop-grid">'+SHOP_ITEMS.filter(i=>i.slot===slot).map(i=>{
+    const owned=progress.owned.includes(i.id), active=progress.equipped[slot]===i.id;
+    return '<div class="shop-item '+(active?'equipped':'')+'"><span class="shop-swatch" style="--swatch:'+i.swatch+'"></span><div><b>'+i.name+'</b><small>'+i.desc+'</small></div><button class="btn '+(active?'shop-active':'')+'" data-shop-item="'+i.id+'" '+(active?'disabled':'')+'>'+(active?'Выбрано':owned?'Применить':i.price+' ◇')+'</button></div>';
+  }).join('')+'</div>').join('');
+  overlay.innerHTML='<div class="card shop-card"><div class="card-badge">мастерская</div><h2>Магазин</h2><p class="lead">Баланс: <b class="gold">'+progress.wallet+' ◇</b> · зарабатывайте очки за выполнение заказов. Покупки меняют только внешний вид.</p>'+(message?'<div class="shop-message" role="status">'+message+'</div>':'')+'<button class="btn shop-back-top" id="btnShopBack">← К заказам</button>'+sections+'<button class="btn primary big" id="btnShopBackBottom">← К заказам</button></div>';
+  overlay.classList.add('show');
+}
+function chooseShopItem(id) {
+  const item=SHOP_ITEMS.find(i=>i.id===id);if(!item)return;
+  if(!progress.owned.includes(id)) {
+    if(progress.wallet<item.price){showShop('Не хватает очков: нужно '+item.price+' ◇');return;}
+    progress.wallet-=item.price;progress.owned.push(id);
+  }
+  progress.equipped[item.slot]=id;saveProgress();Sound.click();showShop();
+}
+
 function finishGame() {
   if (state.finished) return;
   state.finished = true;
   state.running = false;
   const neat = getNeatness();
-  const timeBonus = Math.max(0, 300 - Math.floor(state.elapsed)) * 2;
-  const score = Math.max(0, 800 + Math.round(neat * 1.5) + timeBonus - state.mistakes * 15 - state.hintsUsed * 20);
+  const score = calculateScore(neat);
   const stars = 1 + (state.mistakes === 0 ? 1 : 0) + (neat >= 90 ? 1 : 0);
   const id = state.level.id;
+  const challenge = CHALLENGES[state.challenge] || CHALLENGES.standard;
+  const passed = challengePass(state.challenge, neat);
+  const bonus = passed ? Math.round(score * challenge.bonus) : 0;
+  const reward = score + bonus;
+  progress.wallet += reward;
+  progress.records.wins++;
+  if (state.challenge !== 'standard' && passed) progress.records[state.challenge]++;
+  document.getElementById('launchButton').hidden = true;
   const prev = progress.levels[id] || { bestScore: 0, bestTime: Infinity, stars: 0, completed: false };
   progress.levels[id] = {
     completed: true,
@@ -2444,18 +2545,30 @@ function finishGame() {
   };
   saveProgress();
   Sound.win();
-  setTimeout(() => showWin(score, neat, stars), 550);
+  const finishedLevel = state.level;
+  setTimeout(() => { if (state.finished && state.level === finishedLevel && !document.getElementById('overlay').classList.contains('show')) showWin(score, neat, stars, reward, bonus, passed, challenge); }, 650);
 }
 
-function showWin(score, neat, stars) {
+function showWin(score, neat, stars, reward, bonus, passed, challenge) {
   const nextIndex = state.levelIndex + 1;
   const hasNext = nextIndex < LEVELS.length && isLevelUnlocked(nextIndex);
   const best = progress.levels[state.level.id];
   const overlay = document.getElementById('overlay');
   overlay.innerHTML =
     '<div class="card">' +
-      '<div class="card-badge">щит собран</div>' +
-      '<h2>Готово! ⚡</h2>' +
+      '<div class="card-badge">объект запущен</div>' +
+      '<h2>Свет есть! ⚡</h2>' +
+      launchScene() +
+      '<details class="finished-board"><summary>Посмотреть собранный щит</summary><img alt="Собранный игровой щит" src="' + canvas.toDataURL('image/png') + '"></details>' +
+      '<div class="reward-banner"><span>Заработано за заказ</span><strong>+' + reward + ' ◇</strong><small>' + (challenge.bonus ? challenge.name + ': ' + (passed ? 'бонус +' + bonus : 'условия не выполнены, без бонуса') : 'Баланс: ' + progress.wallet + ' ◇') + '</small></div>' +
+      '<div class="win-actions" style="margin-top:12px">' +
+        (hasNext ? '<button class="btn primary big" id="btnNextLevel">Следующий уровень →</button>' : '') +
+        '<div class="row">' +
+          '<button class="btn" id="btnAgain">Заново</button>' +
+          '<button class="btn" id="btnLevelsWin">К уровням</button>' +
+          '<button class="btn" id="btnShopWin">Магазин</button>' +
+        '</div>' +
+      '</div>' +
       '<div class="stars">' + '★'.repeat(stars) + '☆'.repeat(3 - stars) + '</div>' +
       '<p class="lead">' + (state.mistakes === 0 ? '✓ Без ошибок' : '○ Без ошибок') + ' &nbsp; · &nbsp; ' + (neat >= 90 ? '✓ Аккуратность от 90%' : '○ Аккуратность от 90%') + '</p>' +
       '<div class="result-grid">' +
@@ -2463,13 +2576,6 @@ function showWin(score, neat, stars) {
         '<div><span>Лучший</span><b>' + (best ? best.bestScore : score) + '</b></div>' +
         '<div><span>Время</span><b>' + fmtTime(state.elapsed) + '</b></div>' +
         '<div><span>Аккуратность</span><b>' + neat + '%</b></div>' +
-      '</div>' +
-      '<div class="win-actions" style="margin-top:12px">' +
-        (hasNext ? '<button class="btn primary big" id="btnNextLevel">Следующий уровень →</button>' : '') +
-        '<div class="row">' +
-          '<button class="btn" id="btnAgain">Заново</button>' +
-          '<button class="btn" id="btnLevelsWin">К уровням</button>' +
-        '</div>' +
       '</div>' +
     '</div>';
   overlay.classList.add('show');
@@ -2512,15 +2618,16 @@ function showLevelSelect() {
     '<div class="card level-select">' +
       '<div class="card-badge">выберите объект</div>' +
       '<h2>ЩИТОК</h2>' +
+      (canResume ? '<button class="btn primary big resume-top" id="btnContinue">← Продолжить монтаж</button>' : '') +
       '<p class="lead">' + LEVELS.length + ' заказов · все открыты · результаты сохраняются в браузере.<br>Схемы условные — это игра, не инструкция по электромонтажу.</p>' +
-      cards +
+      '<div class="career-bar"><div><small>ВАШ БАЛАНС</small><strong>' + progress.wallet + ' ◇</strong></div><button class="btn" id="btnShopLevels">Магазин →</button></div>' +
+      challengeSelector() + careerBadges() + cards +
       '<div class="profile-row">' +
         '<span>★ <b>' + totalStars + '</b> / ' + (LEVELS.length * 3) + '</span>' +
         '<span>Щитов собрано: <b>' + completed + '</b> / ' + LEVELS.length + '</span>' +
         '<span>Инструментов: <b>' + TOOL_ORDER.filter(isToolUnlocked).length + '</b> / ' + TOOL_ORDER.length + '</span>' +
       '</div>' +
       '<div class="level-actions">' +
-        (canResume ? '<button class="btn primary big" id="btnContinue">Продолжить монтаж</button>' : '') +
         '<div class="row"><button class="btn" id="btnResetProgress">Сбросить прогресс</button></div>' +
       '</div>' +
     '</div>';
@@ -2544,6 +2651,7 @@ function resetProgress() {
   }
   resetArmed = false;
   progress = defaultProgress();
+  window.SHCHITOK.progress = progress;
   saveProgress();
   Sound.muted = false;
   document.getElementById('btnSound').textContent = '🔊';
@@ -2629,15 +2737,28 @@ function renderMobileParts() {
   container.querySelector('.parts-track').scrollLeft = scrollBefore;
 }
 
+function calculateScore(neat) {
+  const done = state.tasks.filter(t => t.done).length;
+  const timeBonus = Math.max(0, 300 - Math.floor(state.elapsed)) * 2;
+  return Math.max(0, done * 100 + (state.wires.length ? Math.round(neat * 1.5) : 0) + timeBonus - state.mistakes * 15 - state.hintsUsed * 20);
+}
+
 function updateHUD() {
   const done = state.tasks.filter((t) => t.done).length;
   const neat = getNeatness();
   const detail = neatnessDetails();
   const detailEl = document.getElementById('neatDetail');
   if (detailEl) detailEl.textContent = detail.overlaps || detail.overDevices ? 'Наложения: ' + detail.overlaps + ' · поверх приборов: ' + detail.overDevices : 'Нет наложений и проходов по приборам';
-  const score = Math.max(0, done * 100 + (state.wires.length ? Math.round(neat * 1.5) : 0) - state.mistakes * 15 - state.hintsUsed * 20);
+  const score = calculateScore(neat);
+  const launch = document.getElementById('launchButton');
+  if (state.readyForLaunch) {
+    const c = CHALLENGES[state.challenge];
+    const detail = c.bonus ? (challengePass(state.challenge, neat) ? 'Бонус контракта доступен' : 'Пуск без бонуса: проверьте условия') : 'Все задания выполнены';
+    launch.innerHTML = '⚡ Запустить объект <span>' + detail + '</span>';
+    if (c.bonus && !challengePass(state.challenge, neat)) document.getElementById('mobileNextTask').textContent = 'Контракт: проверки ' + Math.min(state.verifiedWireIds.length,c.checks) + '/' + c.checks + ' · откройте «Задания»';
+  }
   const goals = document.getElementById('starGoals');
-  if (goals) goals.innerHTML = '<b>Цели на звёзды</b><span>★ Завершить заказ</span><span>' + (state.mistakes === 0 ? '☆' : '○') + ' Без ошибок</span><span>' + (neat >= 90 ? '☆' : '○') + ' Аккуратность от 90%</span>';
+  if (goals) goals.innerHTML = '<b>Цели на звёзды</b><span>★ Завершить заказ</span><span>' + (state.mistakes === 0 ? '☆' : '○') + ' Без ошибок</span><span>' + (neat >= 90 ? '☆' : '○') + ' Аккуратность от 90%</span>' + (state.challenge !== 'standard' ? '<b>Контракт: ' + CHALLENGES[state.challenge].name + '</b><span>' + CHALLENGES[state.challenge].description + '</span><span>Проверено соединений: ' + Math.min(state.verifiedWireIds.length, CHALLENGES[state.challenge].checks) + ' / ' + CHALLENGES[state.challenge].checks + '</span><span>' + (challengePass(state.challenge, neat) ? '✓ Условия соблюдены' : '○ Условия сейчас не соблюдены') + '</span>' : '');
   const timeStr = fmtTime(state.elapsed);
 
   if (hudCache.time !== timeStr) { elTime.textContent = timeStr; hudCache.time = timeStr; }
@@ -2687,6 +2808,7 @@ function hintTask(task, count) {
   if (task.def.type === 'step') {
     state.hint = { step: task.def.step, until: nowMs() + 4200 };
     toast(STEP_HINTS[task.def.step] || 'Выполните шаг', 'info');
+    if (count) { state.hintsUsed++; updateHUD(); }
     return;
   }
   if (task.def.type === 'install') {
@@ -3086,6 +3208,12 @@ canvas.addEventListener('contextmenu', (e) => {
 elOverlay.addEventListener('click', (e) => {
   const levelBtn = e.target.closest('[data-level]');
   if (levelBtn) { startLevel(Number(levelBtn.dataset.level)); return; }
+  const contract = e.target.closest('[data-challenge]');
+  if (contract) { progress.challenge = contract.dataset.challenge; saveProgress(); showLevelSelect(); return; }
+  const item = e.target.closest('[data-shop-item]');
+  if (item) { chooseShopItem(item.dataset.shopItem); return; }
+  if (e.target.closest('#btnShopLevels, #btnShopWin')) { showShop(); return; }
+  if (e.target.closest('#btnShopBack, #btnShopBackBottom')) { showLevelSelect(); return; }
   if (e.target.closest('#btnContinue')) { resumeGame(); return; }
   if (e.target.closest('#btnAgain')) { restartGame(); return; }
   if (e.target.closest('#btnNextLevel')) { startLevel(state.levelIndex + 1); return; }
@@ -3101,6 +3229,8 @@ document.getElementById('btnHint').addEventListener('click', () => {
   hintTask(next, true);
 });
 document.getElementById('btnLevels').addEventListener('click', showLevelSelect);
+document.getElementById('btnShop').addEventListener('click', showShop);
+document.getElementById('launchButton').addEventListener('click', () => { if (state.readyForLaunch && state.tasks.every(t => t.done) && state.running && !state.paused) finishGame(); });
 document.getElementById('btnSound').addEventListener('click', (e) => {
   Sound.init();
   Sound.muted = !Sound.muted;
@@ -3148,7 +3278,7 @@ elTaskList.addEventListener('click', (e) => {
   if (!li) return;
   const task = state.tasks.find((t) => t.def.id === li.dataset.id);
   if (!task || task.done) return;
-  hintTask(task, false);
+  hintTask(task, true);
   if (phoneLayout.matches) document.querySelector('.sidebar').classList.remove('mobile-open');
   document.querySelectorAll('#taskList .task').forEach((el) => el.classList.toggle('active', el === li));
 });
@@ -3241,7 +3371,7 @@ window.SHCHITOK = {
   pullWire,
   getNeatness: () => getNeatness(),
   camera, fitCanvas, focusCamera,
-  version: '0.3.0',
+  version: '0.4.0',
 };
 
 /* ---------------- init ---------------- */
