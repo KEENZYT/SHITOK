@@ -26,6 +26,7 @@
       <div class="stat"><span>Ошибки</span><b id="statMistakes">0</b></div>
     </div>
 
+    <button id="mobileMenuButton" class="mobile-menu-button" aria-label="Меню игры" aria-expanded="false">Ⅱ</button>
     <div class="top-actions">
       <button id="btnSound" class="icon-btn" title="Звук" aria-label="Звук">🔊</button>
       <button id="btnLevels" class="btn ghost" title="К уровням">☰ Уровни</button>
@@ -34,7 +35,8 @@
   </header>
 
   <div class="mobile-brief" aria-live="polite">
-    <div class="mobile-brief-text"><b>СЛЕДУЮЩЕЕ ЗАДАНИЕ</b><span id="mobileNextTask">Выберите уровень</span></div>
+    <span class="mobile-task-icon" aria-hidden="true">☷</span>
+    <div class="mobile-brief-text"><b>ЗАДАНИЕ</b><span id="mobileNextTask">Выберите уровень</span></div>
     <button id="openTasks" class="mobile-small-button">Задания <span id="mobileTaskCount"></span></button>
   </div>
   <main class="main">
@@ -55,12 +57,6 @@
 
     <section class="stage" id="stage">
       <canvas id="game" width="1160" height="700" aria-label="Электрощит"></canvas>
-      <div id="mobileCamera" class="mobile-camera" aria-label="Управление видом щита">
-        <button id="zoomOut" aria-label="Уменьшить" title="Уменьшить">−</button>
-        <button id="zoomIn" aria-label="Увеличить" title="Увеличить">+</button>
-        <button id="panMode" aria-pressed="false" title="Перемещать щит пальцем">✥ <span>Двигать</span></button>
-        <button id="fitBoard" title="Показать щит целиком">Обзор</button>
-      </div>
       <div id="neatDetail" class="neat-detail" aria-live="polite">Нет наложений и проходов по приборам</div>
       <div id="toast" class="toast" role="status"></div>
       <div id="overlay" class="overlay show">
@@ -73,7 +69,19 @@
     </section>
   </main>
 
-  <div id="mobileParts" class="mobile-parts" aria-label="Детали для установки"></div>
+  <div id="mobileParts" class="mobile-parts" aria-label="Детали и провода"></div>
+  <div id="mobileMenu" class="mobile-menu" hidden>
+    <div class="mobile-menu-card">
+      <div class="mobile-menu-head"><strong>Меню</strong><button id="closeMobileMenu" aria-label="Закрыть меню">✕</button></div>
+      <div class="mobile-menu-grid">
+        <button data-action="btnLevels">☰ Уровни</button><button data-action="btnRestart">↻ Заново</button>
+        <button data-action="btnHint">✦ Подсказка</button><button data-action="btnUndo">↶ Отменить</button>
+        <button data-action="btnSound">♪ Звук</button><button data-action="btnClear">✕ Сброс проводов</button>
+      </div>
+      <p>Два пальца — увеличить или переместить щит. Один палец — монтаж.</p>
+      <div class="mobile-menu-zoom"><button id="zoomOut">−</button><button id="fitBoard">Весь щит</button><button id="zoomIn">+</button></div>
+    </div>
+  </div>
   <footer class="toolbar">
     <div class="tool-group">
       <span class="tool-label">Инструменты</span>

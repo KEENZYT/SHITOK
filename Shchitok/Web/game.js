@@ -915,11 +915,7 @@ function focusCamera(x, y) {
   if (camera.zoom < 1.6) camera.zoom = 2.2;
   fitCanvas();
 }
-function setPan(on) {
-  camera.pan = on; camera.drag = null;
-  const btn = document.getElementById('panMode');
-  btn.classList.toggle('active', on); btn.setAttribute('aria-pressed', String(on));
-}
+function setPan(on) { camera.pan = false; camera.drag = null; }
 window.addEventListener('resize', () => {
   const d = activeDevices.find(d => d.id === mobileDevice && !d.installed);
   if (d && phoneLayout.matches) focusCamera(d.x + devW(d)/2, (DEV_TOP+DEV_BOT)/2);
@@ -2477,13 +2473,33 @@ function renderTasks() {
   if (elSideTitle) elSideTitle.textContent = 'Задание · ' + (state.level ? state.level.name : '');
 }
 
+// Небольшие векторные иллюстрации остаются чёткими на Retina и работают офлайн.
+const toolArt = {
+ hand: '<path d="M24 39V24c0-4 5-4 5 0v-6c0-4 5-4 5 0v5-7c0-4 5-4 5 0v8-5c0-4 5-4 5 0v13c0 8-5 13-12 13h-4c-5 0-8-3-11-7l-4-5c-2-3 1-6 4-4l7 5z"/>',
+ cutters: '<circle cx="23" cy="43" r="7"/><circle cx="42" cy="43" r="7"/><path d="M27 38 42 14l5 2-8 18M38 38 23 14l-5 2 8 18M30 29l5 5"/>',
+ stripper: '<path d="M18 48 29 33 16 22l3-5 14 10 9-13 5 4-9 14 11 15-5 4-11-14-10 14z"/><circle cx="33" cy="32" r="3"/>',
+ screwdriver: '<path d="M14 47 37 24m-3-5 11-8 7 7-8 11-5-5M12 45l5 5-4 4-5-5zM17 42l5 5"/>',
+ multimeter: '<rect x="17" y="10" width="29" height="44" rx="4"/><rect x="21" y="14" width="21" height="9" rx="1"/><circle cx="31.5" cy="34" r="6"/><path d="M27 48h2m6 0h2m13-31 4 4v23l-4 6"/>',
+ remove: '<path d="m18 18 27 27m0-27L18 45"/><circle cx="31.5" cy="31.5" r="21"/>'
+};
+function svgArt(body, cls) { return '<svg class="'+cls+'" viewBox="0 0 64 64" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">'+body+'</svg>'; }
+function wireArt(color) {
+  const c = color === 'L' ? '#bb632c' : color === 'N' ? '#317dc0' : color === 'PE' ? '#8ead35' : '#d7af68';
+  return '<svg class="part-art" viewBox="0 0 64 50" aria-hidden="true"><ellipse cx="32" cy="25" rx="23" ry="13" fill="none" stroke="#17212d" stroke-width="11"/><ellipse cx="32" cy="25" rx="23" ry="13" fill="none" stroke="'+c+'" stroke-width="8"/><ellipse cx="32" cy="25" rx="15" ry="7" fill="none" stroke="'+c+'" stroke-width="5"/><path d="M46 35l9-3" stroke="#f3c58c" stroke-width="3" stroke-linecap="round"/></svg>';
+}
+function deviceArt(d) {
+  if (d.kind === 'meter' || d.kind === 'meter3') return '<svg class="part-art" viewBox="0 0 64 50" aria-hidden="true"><rect x="14" y="4" width="36" height="42" rx="4" fill="#dce5ee" stroke="#94a4b6" stroke-width="2"/><rect x="19" y="12" width="26" height="14" rx="2" fill="#344c61"/><path d="M22 19h20" stroke="#7dd7e6" stroke-width="2"/><circle cx="23" cy="37" r="3" fill="#728598"/><circle cx="41" cy="37" r="3" fill="#728598"/></svg>';
+  return '<svg class="part-art" viewBox="0 0 64 50" aria-hidden="true"><rect x="20" y="3" width="24" height="44" rx="3" fill="#dde5eb" stroke="#94a4b6" stroke-width="2"/><rect x="24" y="17" width="16" height="12" rx="2" fill="#4c6275"/><rect x="31" y="17" width="7" height="11" fill="#e0a03a"/><circle cx="32" cy="9" r="2" fill="#687a8b"/><circle cx="32" cy="41" r="2" fill="#687a8b"/></svg>';
+}
 function renderMobileParts() {
   const container = document.getElementById('mobileParts');
-  const parts = activeDevices.filter(d => !d.installed);
-  if (!parts.length || state.assembly) { container.innerHTML = ''; return; }
-  container.innerHTML = '<span class="parts-label">Детали →</span>' + parts.map(d =>
-    '<button class="part-button ' + (mobileDevice === d.id ? 'active' : '') + '" data-mobile-part="' + d.id + '">' + d.label + '</button>'
-  ).join('');
+  const scrollBefore = container.querySelector('.parts-track')?.scrollLeft || 0;
+  const parts = state.assembly ? [] : activeDevices.filter(d => !d.installed);
+  const colors = [['auto','Авто'],['L','Провод L'],['N','Провод N'],['PE','Земля']];
+  const wireCards = colors.map(([id,label]) => '<button class="part-button wire-choice ' + (state.selectedColor === id ? 'active' : '') + '" data-mobile-color="'+id+'" aria-pressed="'+(state.selectedColor === id)+'">' + wireArt(id) + '<span>'+label+'</span></button>').join('');
+  const deviceCards = parts.map(d => '<button class="part-button ' + (mobileDevice === d.id ? 'active' : '') + '" data-mobile-part="' + d.id + '" aria-pressed="'+(mobileDevice===d.id)+'">' + deviceArt(d) + '<span>' + d.label + '</span></button>').join('');
+  container.innerHTML = '<div class="parts-heading"><span class="parts-symbol">⬡</span> ДЕТАЛИ <small>ЛИСТАЙТЕ →</small></div><div class="parts-track">' + (parts.length ? deviceCards + wireCards : wireCards) + '</div>';
+  container.querySelector('.parts-track').scrollLeft = scrollBefore;
 }
 
 function updateHUD() {
@@ -2512,6 +2528,7 @@ function updateHUD() {
 }
 
 function renderToolBar() {
+  const scrollBefore = elToolBelt.scrollLeft;
   if (!isToolUnlocked(state.tool)) state.tool = 'hand';
   elToolBelt.innerHTML = TOOL_ORDER.map((id) => {
     const t = TOOLS[id];
@@ -2520,9 +2537,11 @@ function renderToolBar() {
     const title = unlocked ? t.desc : 'Откроется: ' + (TOOL_UNLOCK[id] ? TOOL_UNLOCK[id].text : '');
     return '<button class="tool ' + (active ? 'active' : '') + ' ' + (unlocked ? '' : 'locked') + '" data-tool="' + id + '" title="' + title + '" ' + (unlocked ? '' : 'disabled') + '>' +
       '<span class="tool-icon">' + (unlocked ? t.icon : '🔒') + '</span>' +
-      '<span class="tool-name">' + t.name + '</span>' +
+      (unlocked ? svgArt(toolArt[id], 'tool-art') : '') +
+      '<span class="tool-name">' + (id === 'stripper' ? 'Зачистка' : t.name) + '</span>' +
     '</button>';
   }).join('');
+  elToolBelt.scrollLeft = scrollBefore;
 }
 
 function pulseTool(id) {
@@ -2565,7 +2584,7 @@ function hintTask(task, count) {
 /* ---------------- pointer interaction ---------------- */
 let downInfo = null;
 
-canvas.addEventListener('pointerdown', (e) => {
+function gamePointerDown(e) {
   if (!state.running || state.finished || state.paused) return;
   if (phoneLayout.matches && camera.pan) {
     camera.drag = {id:e.pointerId,x:e.clientX,y:e.clientY};
@@ -2757,9 +2776,9 @@ canvas.addEventListener('pointerdown', (e) => {
 
   state.pendingNode = null;
   downInfo = null;
-});
+}
 
-canvas.addEventListener('pointermove', (e) => {
+function gamePointerMove(e) {
   if (camera.drag && camera.drag.id === e.pointerId) {
     camera.cx -= (e.clientX - camera.drag.x) / camera.scale;
     camera.cy -= (e.clientY - camera.drag.y) / camera.scale;
@@ -2811,7 +2830,7 @@ canvas.addEventListener('pointermove', (e) => {
   else if (hit && hit.wire) canvas.style.cursor = hit.badge ? 'pointer' : 'grab';
   else if (hitPart(p)) canvas.style.cursor = 'grab';
   else canvas.style.cursor = 'default';
-});
+}
 
 function endPointer(e) {
   if (camera.drag && (!e || camera.drag.id === e.pointerId)) { camera.drag = null; return; }
@@ -2832,13 +2851,95 @@ function endPointer(e) {
   downInfo = null;
 }
 
-canvas.addEventListener('pointerup', endPointer);
-canvas.addEventListener('pointercancel', () => {
-  camera.drag = null;
-  state.dragPart = null;
-  state.dragWire = null;
-  state.pendingNode = null;
+// Одним пальцем — монтаж, двумя одновременно — масштаб и перемещение.
+// Для касания ждём отпускания, чтобы второй палец не включал инструмент случайно.
+const activeTouches = new Map();
+let singleTouch = null, twoFingerGesture = null, gestureBlocked = false;
+const gestureStage = document.getElementById('stage');
+function touchCopy(e) { return {clientX:e.clientX,clientY:e.clientY,pointerId:e.pointerId,pointerType:'touch'}; }
+function rollbackSingleDrag() {
+  if (!singleTouch || !singleTouch.started) return;
+  if (state.dragWire) { state.dragWire.wire.lane = state.dragWire.startLane; neatCache.dirty = true; }
+  state.dragWire = null; state.dragPart = null;
+  if (state.assembly) state.assembly.dragItem = null;
+  state.pendingNode = singleTouch.pendingNode;
+  state.probeNode = singleTouch.probeNode;
   downInfo = null;
+}
+function beginTwoFinger() {
+  rollbackSingleDrag();
+  const [a,b] = [...activeTouches.values()];
+  const mx = (a.clientX+b.clientX)/2, my = (a.clientY+b.clientY)/2;
+  const rect = canvas.getBoundingClientRect();
+  twoFingerGesture = {
+    distance:Math.max(1,dist(a.clientX,a.clientY,b.clientX,b.clientY)),
+    zoom:camera.zoom,
+    anchorX:(mx-rect.left)/camera.scale,
+    anchorY:(my-rect.top)/camera.scale
+  };
+  gestureBlocked = true;
+}
+function moveTwoFinger() {
+  if (!twoFingerGesture || activeTouches.size < 2) return;
+  const [a,b] = [...activeTouches.values()];
+  const mx=(a.clientX+b.clientX)/2, my=(a.clientY+b.clientY)/2;
+  camera.zoom=clamp(twoFingerGesture.zoom * dist(a.clientX,a.clientY,b.clientX,b.clientY) / twoFingerGesture.distance, 1, 4.5);
+  const r=gestureStage.getBoundingClientRect();
+  const scale=Math.min(r.width/W,r.height/H)*camera.zoom;
+  camera.cx=twoFingerGesture.anchorX-(mx-(r.left+r.width/2))/scale;
+  camera.cy=twoFingerGesture.anchorY-(my-(r.top+r.height/2))/scale;
+  fitCanvas();
+}
+gestureStage.addEventListener('pointerdown', e => {
+  if (e.target !== canvas && e.target !== gestureStage) return;
+  if (e.pointerType !== 'touch' || !phoneLayout.matches) { if (e.target === canvas) gamePointerDown(e); return; }
+  if (!state.running || state.finished || state.paused) return;
+  activeTouches.set(e.pointerId,touchCopy(e));
+  try { gestureStage.setPointerCapture(e.pointerId); } catch (_) {}
+  e.preventDefault();
+  if (activeTouches.size === 1 && !gestureBlocked) {
+    singleTouch = {start:touchCopy(e),started:false,moved:false,pendingNode:state.pendingNode,probeNode:state.probeNode};
+  } else if (activeTouches.size === 2) beginTwoFinger();
+});
+gestureStage.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'touch' || !phoneLayout.matches) { if (e.target === canvas) gamePointerMove(e); return; }
+  if (!activeTouches.has(e.pointerId)) return;
+  activeTouches.set(e.pointerId,touchCopy(e)); e.preventDefault();
+  if (twoFingerGesture) { moveTwoFinger(); return; }
+  if (gestureBlocked || !singleTouch) return;
+  const first = singleTouch.start;
+  if (dist(first.clientX,first.clientY,e.clientX,e.clientY) > 7) singleTouch.moved = true;
+  // Для прокладки/укладки проводов оставляем привычное перетаскивание одним пальцем.
+  if (singleTouch.moved && !singleTouch.started && state.tool === 'hand' && !mobileDevice) {
+    const p = getPos(first), wh = hitWire(p,18);
+    const badge = state.hoverWire && dist(p.x,p.y,wireBadgePos(state.hoverWire.wire).x,wireBadgePos(state.hoverWire.wire).y)<20;
+    if (!hitNode(p,26) && (wh || hitPart(p)) && !badge) { singleTouch.started=true; gamePointerDown(first); }
+  }
+  if (singleTouch.started) gamePointerMove(e);
+});
+gestureStage.addEventListener('pointerup', e => {
+  if (e.pointerType !== 'touch' || !phoneLayout.matches) { if (e.target === canvas) endPointer(e); return; }
+  if (!activeTouches.has(e.pointerId)) return;
+  e.preventDefault();
+  activeTouches.delete(e.pointerId);
+  if (gestureBlocked) {
+    twoFingerGesture = null;
+    if (!activeTouches.size) { gestureBlocked=false; singleTouch=null; }
+    return;
+  }
+  if (singleTouch) {
+    if (!singleTouch.started) {
+      if (!singleTouch.moved) gamePointerDown(e);
+      else if (state.tool === 'hand' && !mobileDevice && hitNode(getPos(singleTouch.start),26)) gamePointerDown(singleTouch.start);
+    }
+    endPointer(e); singleTouch=null;
+  }
+});
+gestureStage.addEventListener('pointercancel', e => {
+  if (e.pointerType === 'touch' && phoneLayout.matches) {
+    rollbackSingleDrag(); activeTouches.delete(e.pointerId); twoFingerGesture=null;
+    gestureBlocked=activeTouches.size>0; if (!activeTouches.size) singleTouch=null;
+  } else { state.dragPart=null; state.dragWire=null; state.pendingNode=null; downInfo=null; }
 });
 canvas.addEventListener('pointerleave', () => {
   state.pointer.inside = false;
@@ -2886,6 +2987,7 @@ document.getElementById('colorChips').addEventListener('click', (e) => {
   if (!btn) return;
   state.selectedColor = btn.dataset.color;
   document.querySelectorAll('#colorChips .chip').forEach((c) => c.classList.toggle('active', c === btn));
+  renderMobileParts();
   Sound.click();
 });
 
@@ -2944,8 +3046,15 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('openTasks').addEventListener('click', () => document.querySelector('.sidebar').classList.add('mobile-open'));
 document.getElementById('closeTasks').addEventListener('click', () => document.querySelector('.sidebar').classList.remove('mobile-open'));
 document.getElementById('mobileParts').addEventListener('click', (e) => {
+  if (!state.running || state.finished || state.paused) return;
+  const color = e.target.closest('[data-mobile-color]');
+  if (color) {
+    state.selectedColor = color.dataset.mobileColor;
+    document.querySelectorAll('#colorChips .chip').forEach(c => c.classList.toggle('active', c.dataset.color === state.selectedColor));
+    renderMobileParts(); Sound.click(); return;
+  }
   const btn = e.target.closest('[data-mobile-part]');
-  if (!btn || !state.running || state.finished || state.paused) return;
+  if (!btn) return;
   const d = activeDevices.find(d => d.id === btn.dataset.mobilePart && !d.installed);
   if (!d) return;
   mobileDevice = d.id; state.tool = 'hand'; state.pendingNode = null; state.probeNode = null;
@@ -2957,9 +3066,25 @@ document.getElementById('mobileParts').addEventListener('click', (e) => {
 document.getElementById('zoomIn').addEventListener('click', () => {camera.zoom = clamp(camera.zoom * 1.3, 1, 4.5); fitCanvas();});
 document.getElementById('zoomOut').addEventListener('click', () => {camera.zoom = clamp(camera.zoom / 1.3, 1, 4.5); fitCanvas();});
 document.getElementById('fitBoard').addEventListener('click', () => {camera.zoom = 1; camera.cx = W/2; camera.cy = H/2; fitCanvas();});
-document.getElementById('panMode').addEventListener('click', () => {
-  setPan(!camera.pan);
-  if (camera.pan) toast('Двигайте щит пальцем. Нажмите «Двигать» ещё раз для монтажа.', 'info');
+const menu = document.getElementById('mobileMenu');
+let menuPausedGame = false;
+function setMobileMenu(open) {
+  if (open && menu.hidden) {
+    menuPausedGame = state.running && !state.finished && !state.paused;
+    if (menuPausedGame) { state.elapsed = (nowMs() - state.startTime) / 1000; state.paused = true; }
+  } else if (!open && !menu.hidden && menuPausedGame) {
+    if (state.running && !state.finished) { state.startTime = nowMs() - state.elapsed * 1000; state.paused = false; }
+    menuPausedGame = false;
+  }
+  menu.hidden = !open;
+  document.getElementById('mobileMenuButton').setAttribute('aria-expanded', String(open));
+}
+document.getElementById('mobileMenuButton').addEventListener('click', () => setMobileMenu(menu.hidden));
+document.getElementById('closeMobileMenu').addEventListener('click', () => setMobileMenu(false));
+menu.addEventListener('click', e => {
+  if (e.target === menu) { setMobileMenu(false); return; }
+  const btn = e.target.closest('[data-action]');
+  if (btn) { setMobileMenu(false); document.getElementById(btn.dataset.action).click(); }
 });
 
 /* ---------------- debug api ---------------- */
