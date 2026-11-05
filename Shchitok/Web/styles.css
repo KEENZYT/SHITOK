@@ -571,3 +571,15 @@ button{font-family:inherit}
 @media (max-width:700px), (max-height:500px) and (pointer:coarse){
  .stats .stat:nth-child(3) span{font-size:0}.stats .stat:nth-child(3) span::after{content:'АККУРАТН.';font-size:8px}
 }
+@media (max-width:700px), (max-height:500px) and (pointer:coarse){
+ .part-art.reference-part{width:58px;height:42px;object-fit:contain;filter:drop-shadow(0 3px 2px #101822aa)}
+ .tool-art.reference-tool{width:44px;height:42px;object-fit:contain;filter:drop-shadow(0 2px 2px #111a22aa)}
+ .tool:not(.active) .tool-art-screwdriver{filter:grayscale(1) brightness(2.3) drop-shadow(0 2px 2px #111a22aa)}
+ .tool.active .tool-art-cutters,.tool.active .tool-art-stripper,.tool.active .tool-art-multimeter{filter:brightness(.43) saturate(.4)}
+ .tool.active .tool-art-screwdriver{filter:none}
+}
+@media (max-width:700px), (max-height:500px) and (pointer:coarse){
+ .quick-hand{margin-left:auto;border:1px solid #50647a;border-radius:8px;background:#26384b;color:#c4d4e4;min-height:24px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+ .quick-hand.active{background:#7b5528;border-color:#e2ab5b;color:#fff3d7}
+ .parts-heading small{margin-left:0}
+}
