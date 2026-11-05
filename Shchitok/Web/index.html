@@ -33,10 +33,15 @@
     </div>
   </header>
 
+  <div class="mobile-brief" aria-live="polite">
+    <div class="mobile-brief-text"><b>СЛЕДУЮЩЕЕ ЗАДАНИЕ</b><span id="mobileNextTask">Выберите уровень</span></div>
+    <button id="openTasks" class="mobile-small-button">Задания <span id="mobileTaskCount"></span></button>
+  </div>
   <main class="main">
     <aside class="sidebar">
       <div class="side-head">
         <h2 id="sideTitle">Задание</h2>
+        <button id="closeTasks" class="mobile-small-button mobile-only">Закрыть ✕</button>
         <span id="taskProgress" class="badge">0 / 10</span>
       </div>
       <div id="modeHelp" class="mode-help" hidden><b>Найдите обрыв</b><span>1. Прозвоните указанные провода мультиметром.</span><span>2. Выберите «Снять провод» и нажмите на отмеченный обрыв.</span><span>3. Соедините те же клеммы новым проводом, отрежьте, зачистите, затяните и проверьте ещё раз.</span></div>
@@ -50,6 +55,12 @@
 
     <section class="stage" id="stage">
       <canvas id="game" width="1160" height="700" aria-label="Электрощит"></canvas>
+      <div id="mobileCamera" class="mobile-camera" aria-label="Управление видом щита">
+        <button id="zoomOut" aria-label="Уменьшить" title="Уменьшить">−</button>
+        <button id="zoomIn" aria-label="Увеличить" title="Увеличить">+</button>
+        <button id="panMode" aria-pressed="false" title="Перемещать щит пальцем">✥ <span>Двигать</span></button>
+        <button id="fitBoard" title="Показать щит целиком">Обзор</button>
+      </div>
       <div id="neatDetail" class="neat-detail" aria-live="polite">Нет наложений и проходов по приборам</div>
       <div id="toast" class="toast" role="status"></div>
       <div id="overlay" class="overlay show">
@@ -62,6 +73,7 @@
     </section>
   </main>
 
+  <div id="mobileParts" class="mobile-parts" aria-label="Детали для установки"></div>
   <footer class="toolbar">
     <div class="tool-group">
       <span class="tool-label">Инструменты</span>

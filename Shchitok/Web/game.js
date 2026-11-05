@@ -884,15 +884,47 @@ const DPR = Math.min(window.devicePixelRatio || 1, 2);
 canvas.width = W * DPR;
 canvas.height = H * DPR;
 
+// На телефоне увеличиваем щит и даём перемещать его отдельно от монтажа.
+const phoneLayout = window.matchMedia('(max-width:700px), (max-height:500px) and (pointer:coarse)');
+const camera = { zoom: 2.2, cx: 350, cy: 300, scale: 1, pan: false, drag: null };
+let mobileDevice = null;
 function fitCanvas() {
   const stage = document.getElementById('stage');
   const r = stage.getBoundingClientRect();
   if (!r.width || !r.height) return;
-  const s = Math.min(r.width / W, r.height / H);
-  canvas.style.width = Math.floor(W * s) + 'px';
-  canvas.style.height = Math.floor(H * s) + 'px';
+  const base = Math.min(r.width / W, r.height / H);
+  if (!phoneLayout.matches) {
+    canvas.style.width = Math.floor(W * base) + 'px';
+    canvas.style.height = Math.floor(H * base) + 'px';
+    canvas.style.left = ''; canvas.style.top = ''; canvas.style.transform = '';
+    return;
+  }
+  const scale = base * camera.zoom;
+  camera.scale = scale;
+  const halfW = r.width / (2 * scale), halfH = r.height / (2 * scale);
+  camera.cx = halfW >= W / 2 ? W / 2 : clamp(camera.cx, halfW, W - halfW);
+  camera.cy = halfH >= H / 2 ? H / 2 : clamp(camera.cy, halfH, H - halfH);
+  canvas.style.width = (W * scale) + 'px'; canvas.style.height = (H * scale) + 'px';
+  canvas.style.left = (r.width / 2 - camera.cx * scale) + 'px';
+  canvas.style.top = (r.height / 2 - camera.cy * scale) + 'px';
+  canvas.style.transform = 'none';
 }
-window.addEventListener('resize', fitCanvas);
+function focusCamera(x, y) {
+  if (!phoneLayout.matches) return;
+  camera.cx = x; camera.cy = y;
+  if (camera.zoom < 1.6) camera.zoom = 2.2;
+  fitCanvas();
+}
+function setPan(on) {
+  camera.pan = on; camera.drag = null;
+  const btn = document.getElementById('panMode');
+  btn.classList.toggle('active', on); btn.setAttribute('aria-pressed', String(on));
+}
+window.addEventListener('resize', () => {
+  const d = activeDevices.find(d => d.id === mobileDevice && !d.installed);
+  if (d && phoneLayout.matches) focusCamera(d.x + devW(d)/2, (DEV_TOP+DEV_BOT)/2);
+  else fitCanvas();
+});
 if (window.ResizeObserver) new ResizeObserver(fitCanvas).observe(document.getElementById('stage'));
 fitCanvas();
 
@@ -1870,6 +1902,18 @@ function hitWire(p, radius) {
   return { wire: best, badge: !!bp && dist(p.x, p.y, bp.x, bp.y) < 14, dist: bestD };
 }
 
+// Если новый провод пересекает старый, инструмент попадает в него при почти равном расстоянии.
+function hitWireForWork(p, radius) {
+  const best = hitWire(p, radius);
+  const last = state.wires.find(w => w.id === state.history[state.history.length - 1]);
+  const eligible = last && (state.tool === 'cutters' ? !last.cut : state.tool === 'stripper' ? last.cut && !last.stripped : state.tool === 'screwdriver' ? last.cut && last.stripped && !last.tightened : false);
+  if (!eligible) return best;
+  const pts = sampleWire(last); let distance = Infinity;
+  for (let i=1; i<pts.length; i++) distance = Math.min(distance, pointSegDist(p.x,p.y,pts[i-1].x,pts[i-1].y,pts[i].x,pts[i].y));
+  if (distance < radius && (!best || distance <= best.dist + 6)) return {wire:last,dist:distance,badge:false};
+  return best;
+}
+
 function pick(p, nodeRadius, wireRadius) {
   if (state.hoverWire) {
     const bp = wireBadgePos(state.hoverWire.wire);
@@ -1939,6 +1983,7 @@ function installDevice(deviceId) {
   const d = activeDevices.find((x) => x.id === deviceId);
   if (!d || d.installed) return;
   d.installed = true;
+  if (mobileDevice === deviceId) mobileDevice = null;
   neatCache.dirty = true;
   addDeviceNodes(d);
   if (d.kind === 'meter' || d.kind === 'meter3') state.meterMounted = true;
@@ -2213,6 +2258,10 @@ function resetGame() {
   state.elapsed = 0;
   state.lastUnlockedTool = null;
   state.probeNode = null;
+  mobileDevice = null;
+  setPan(false);
+  camera.zoom = 2.2; camera.cx = 350; camera.cy = 300;
+  document.querySelector('.sidebar').classList.remove('mobile-open');
   for (const id of (state.level.preinstalled || [])) {
     const device = activeDevices.find(d => d.id === id);
     if (device) { device.installed = true; addDeviceNodes(device); }
@@ -2420,8 +2469,21 @@ function renderTasks() {
       '</div>' +
     '</li>';
   }).join('');
+  const next = visibleTasks.find(t => !t.done);
+  document.getElementById('mobileNextTask').textContent = next ? next.def.text : 'Все задания выполнены';
+  document.getElementById('mobileTaskCount').textContent = doneCount + '/' + visibleTasks.length;
+  renderMobileParts();
   elProgress.textContent = doneCount + ' / ' + visibleTasks.length;
   if (elSideTitle) elSideTitle.textContent = 'Задание · ' + (state.level ? state.level.name : '');
+}
+
+function renderMobileParts() {
+  const container = document.getElementById('mobileParts');
+  const parts = activeDevices.filter(d => !d.installed);
+  if (!parts.length || state.assembly) { container.innerHTML = ''; return; }
+  container.innerHTML = '<span class="parts-label">Детали →</span>' + parts.map(d =>
+    '<button class="part-button ' + (mobileDevice === d.id ? 'active' : '') + '" data-mobile-part="' + d.id + '">' + d.label + '</button>'
+  ).join('');
 }
 
 function updateHUD() {
@@ -2482,6 +2544,8 @@ function hintTask(task, count) {
   }
   if (task.def.type === 'install') {
     state.hint = { install: task.def.device, until: nowMs() + 4200 };
+    const dev = activeDevices.find(d => d.id === task.def.device);
+    if (dev) focusCamera(dev.x + devW(dev) / 2, (DEV_TOP + DEV_BOT) / 2);
     toast('Перетащите деталь из лотка в её контур на рейке', 'info');
   } else {
     if ((task.def.type === 'replace' || task.def.type === 'test') && task.def.slot !== undefined && !task.def.from) {
@@ -2492,6 +2556,7 @@ function hintTask(task, count) {
       return;
     }
     state.hint = { nodes: [task.def.from, task.def.to], until: nowMs() + 4200 };
+    focusCamera((nodes[task.def.from].x + nodes[task.def.to].x) / 2, (nodes[task.def.from].y + nodes[task.def.to].y) / 2);
     toast(task.def.type === 'diagnose' ? 'Выберите мультиметр и нажмите обе подсвеченные клеммы' : task.def.type === 'replace' ? 'Снимите отмеченный провод, соедините эти клеммы и обработайте новый' : task.def.type === 'test' ? 'Мультиметр: нажмите на обе клеммы. Сначала затяните провод.' : 'Подсказка: ' + task.def.text + '. Отрежьте, зачистите и затяните', 'info');
   }
   if (count) { state.hintsUsed++; updateHUD(); }
@@ -2502,6 +2567,11 @@ let downInfo = null;
 
 canvas.addEventListener('pointerdown', (e) => {
   if (!state.running || state.finished || state.paused) return;
+  if (phoneLayout.matches && camera.pan) {
+    camera.drag = {id:e.pointerId,x:e.clientX,y:e.clientY};
+    try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+    e.preventDefault(); return;
+  }
   Sound.init();
   const p = getPos(e);
   state.pointer.x = p.x;
@@ -2511,6 +2581,14 @@ canvas.addEventListener('pointerdown', (e) => {
   const touch = e.pointerType === 'touch';
   const nodeRadius = touch ? 26 : 18;
   const wireRadius = touch ? 18 : 12;
+
+  if (phoneLayout.matches && mobileDevice && !state.assembly) {
+    const d = activeDevices.find(x => x.id === mobileDevice && !x.installed);
+    if (d && pointInRect(p, {x:d.x, y:DEV_TOP, w:devW(d), h:DEV_BOT-DEV_TOP}, 12)) {
+      installDevice(d.id); mobileDevice = null; renderMobileParts();
+    } else toast('Нажмите на подсвеченный контур детали на рейке', 'info');
+    return;
+  }
 
   if (state.assembly) {
     const a = state.assembly;
@@ -2598,7 +2676,15 @@ canvas.addEventListener('pointerdown', (e) => {
   }
 
   if (state.tool === 'remove') {
-    const wh = hitWire(p, wireRadius + 4);
+    // Красная метка приоритетна при пересечении с другим проводом.
+    let marked = null, markDistance = touch ? 22 : 16;
+    for (const w of state.wires) {
+      if (!w.broken || !w.detected) continue;
+      const points = wirePoints(w); if (!points) continue;
+      const distance = dist(p.x, p.y, (points.A.x + points.B.x) / 2, points.lane);
+      if (distance < markDistance) { marked = w; markDistance = distance; }
+    }
+    const wh = marked ? {wire: marked} : hitWire(p, wireRadius + 4);
     if (wh) removeWire(wh.wire); else toast('Нажмите на провод, который нужно снять', 'info');
     return;
   }
@@ -2608,19 +2694,19 @@ canvas.addEventListener('pointerdown', (e) => {
     return;
   }
   if (state.tool === 'cutters') {
-    const wh = hitWire(p, wireRadius + 4);
+    const wh = hitWireForWork(p, wireRadius + 4);
     if (wh) cutWire(wh.wire);
     else toast('Наведите на провод, чтобы отрезать', 'info');
     return;
   }
   if (state.tool === 'stripper') {
-    const wh = hitWire(p, wireRadius + 4);
+    const wh = hitWireForWork(p, wireRadius + 4);
     if (wh) stripWire(wh.wire);
     else toast('Наведите на провод, чтобы зачистить', 'info');
     return;
   }
   if (state.tool === 'screwdriver') {
-    const wh = hitWire(p, wireRadius + 4);
+    const wh = hitWireForWork(p, wireRadius + 4);
     if (wh) tightenWire(wh.wire);
     else toast('Наведите на провод, чтобы затянуть', 'info');
     return;
@@ -2674,6 +2760,12 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointermove', (e) => {
+  if (camera.drag && camera.drag.id === e.pointerId) {
+    camera.cx -= (e.clientX - camera.drag.x) / camera.scale;
+    camera.cy -= (e.clientY - camera.drag.y) / camera.scale;
+    camera.drag.x = e.clientX; camera.drag.y = e.clientY; fitCanvas();
+    e.preventDefault(); return;
+  }
   const p = getPos(e);
   state.pointer.x = p.x;
   state.pointer.y = p.y;
@@ -2722,6 +2814,7 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 function endPointer(e) {
+  if (camera.drag && (!e || camera.drag.id === e.pointerId)) { camera.drag = null; return; }
   if (state.assembly && state.assembly.dragItem) { finishItemDrag(); downInfo = null; return; }
   if (state.dragPart) { finishPartDrag(); downInfo = null; return; }
   if (state.dragWire) { state.dragWire = null; downInfo = null; return; }
@@ -2741,6 +2834,7 @@ function endPointer(e) {
 
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', () => {
+  camera.drag = null;
   state.dragPart = null;
   state.dragWire = null;
   state.pendingNode = null;
@@ -2804,6 +2898,9 @@ elToolBelt.addEventListener('click', (e) => {
     return;
   }
   state.tool = id;
+  mobileDevice = null;
+  setPan(false);
+  renderMobileParts();
   state.probeNode = null;
   state.pendingNode = null;
   renderToolBar();
@@ -2822,6 +2919,7 @@ elTaskList.addEventListener('click', (e) => {
   const task = state.tasks.find((t) => t.def.id === li.dataset.id);
   if (!task || task.done) return;
   hintTask(task, false);
+  if (phoneLayout.matches) document.querySelector('.sidebar').classList.remove('mobile-open');
   document.querySelectorAll('#taskList .task').forEach((el) => el.classList.toggle('active', el === li));
 });
 
@@ -2839,6 +2937,29 @@ document.addEventListener('keydown', (e) => {
     removeWire(state.hoverWire.wire);
     state.hoverWire = null;
   }
+});
+
+
+// Крупные элементы управления для телефона.
+document.getElementById('openTasks').addEventListener('click', () => document.querySelector('.sidebar').classList.add('mobile-open'));
+document.getElementById('closeTasks').addEventListener('click', () => document.querySelector('.sidebar').classList.remove('mobile-open'));
+document.getElementById('mobileParts').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-mobile-part]');
+  if (!btn || !state.running || state.finished || state.paused) return;
+  const d = activeDevices.find(d => d.id === btn.dataset.mobilePart && !d.installed);
+  if (!d) return;
+  mobileDevice = d.id; state.tool = 'hand'; state.pendingNode = null; state.probeNode = null;
+  setPan(false); renderToolBar(); renderMobileParts();
+  state.hint = {install: d.id, until: nowMs() + 20000};
+  focusCamera(d.x + devW(d)/2, (DEV_TOP + DEV_BOT)/2);
+  toast('Нажмите на подсвеченный контур «' + d.label + '»', 'info');
+});
+document.getElementById('zoomIn').addEventListener('click', () => {camera.zoom = clamp(camera.zoom * 1.3, 1, 4.5); fitCanvas();});
+document.getElementById('zoomOut').addEventListener('click', () => {camera.zoom = clamp(camera.zoom / 1.3, 1, 4.5); fitCanvas();});
+document.getElementById('fitBoard').addEventListener('click', () => {camera.zoom = 1; camera.cx = W/2; camera.cy = H/2; fitCanvas();});
+document.getElementById('panMode').addEventListener('click', () => {
+  setPan(!camera.pan);
+  if (camera.pan) toast('Двигайте щит пальцем. Нажмите «Двигать» ещё раз для монтажа.', 'info');
 });
 
 /* ---------------- debug api ---------------- */
@@ -2865,6 +2986,7 @@ window.SHCHITOK = {
   removeWire,
   pullWire,
   getNeatness: () => getNeatness(),
+  camera, fitCanvas, focusCamera,
   version: '0.3.0',
 };
 
